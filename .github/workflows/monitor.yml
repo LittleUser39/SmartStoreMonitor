@@ -32,17 +32,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python src/main.py
 
-      - name: Upload crawl diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: smartstore-debug-${{ github.run_id }}
-          path: debug/
-          if-no-files-found: warn
-          retention-days: 7
-
       - name: Persist product state
-        if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
