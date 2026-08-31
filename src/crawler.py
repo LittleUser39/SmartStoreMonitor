@@ -6,7 +6,8 @@ from urllib.parse import parse_qs, urljoin, urlparse
 from playwright.sync_api import sync_playwright
 
 BASE_URL = "https://herotime.co.kr"
-PRODUCT_URL_RE = re.compile(r"^https?://(?:www\.)?herotime\.co\.kr/product/[^?#]+/(\d+)(?:/|$)", re.I)
+PRODUCT_PATH_RE = re.compile(r"^/product/[^?#]+(?:/category/\d+)?(?:/display/\d+)?/?$", re.I)
+PRODUCT_ID_RE = re.compile(r"/product/[^/]+/(\d+)(?:/|$)", re.I)
 
 
 def normalize_text(value: str | None) -> str:
@@ -21,7 +22,8 @@ def parse_price(text: str) -> str:
 
 
 def product_id_from_url(url: str) -> str | None:
-    match = PRODUCT_URL_RE.match(url)
+    path = urlparse(url).path
+    match = PRODUCT_ID_RE.search(path)
     return match.group(1) if match else None
 
 
@@ -54,7 +56,7 @@ def first_text(container, selectors: tuple[str, ...]) -> str:
 
 
 def first_image(container) -> str:
-    for selector in ("img[src]", "img[data-src]", "img[data-original]"):
+    for selector in ("img[data-src]", "img[data-original]", "img[src]"):
         try:
             nodes = container.locator(selector)
             for i in range(min(nodes.count(), 3)):
@@ -102,10 +104,8 @@ def extract_product(link) -> dict | None:
 
     if not name:
         name = normalize_text(link.inner_text())
-
     if not name:
         name = normalize_text(link.get_attribute("title"))
-
     if not name:
         return None
 
@@ -119,23 +119,34 @@ def extract_product(link) -> dict | None:
             '[class*="price"]',
         ),
     )
-    price = parse_price(price or card_text)
-    image = first_image(container)
 
     return {
         "id": product_id,
         "name": name,
-        "price": price,
+        "price": parse_price(price or card_text),
         "url": url,
-        "image": image,
+        "image": first_image(container),
     }
 
 
-def collect_current_page(page, products: dict[str, dict], max_products: int) -> int:
+def collect_current_page(page, products: dict[str, dict], max_products: int, debug_links: bool = False) -> int:
     links = page.locator('a[href*="/product/"]')
-    print(f"Candidate /product/ links on page: {links.count()}")
+    count = links.count()
+    print(f"Candidate /product/ links on page: {count}")
 
-    for i in range(links.count()):
+    if debug_links:
+        print("--- HeroTime product-link diagnostics (first 30) ---")
+        for i in range(min(count, 30)):
+            try:
+                href = links.nth(i).get_attribute("href") or ""
+                text = normalize_text(links.nth(i).inner_text())
+                absolute = urljoin(page.url, href)
+                print(f"[link {i}] href={href!r} | id={product_id_from_url(absolute)!r} | text={text[:120]!r}")
+            except Exception as exc:
+                print(f"[link {i}] diagnostic error: {exc}")
+        print("--- end diagnostics ---")
+
+    for i in range(count):
         if len(products) >= max_products:
             break
         try:
@@ -171,7 +182,8 @@ def crawl_products(search_url: str, max_products: int = 1000, keywords: list[str
             print(f"Page title: {normalize_text(page.title())}")
             print(f"Final URL: {page.url}")
 
-            collect_current_page(page, products, max_products)
+            # Run diagnostics only on the initial search page so the Actions log stays manageable.
+            collect_current_page(page, products, max_products, debug_links=True)
 
             pagination_links = page.locator(
                 'a[href*="page="], a[href*="page_num="], a[href*="?page"]'
@@ -182,8 +194,7 @@ def crawl_products(search_url: str, max_products: int = 1000, keywords: list[str
                 if not href:
                     continue
                 candidate = urljoin(page.url, href)
-                parsed = urlparse(candidate)
-                query = parse_qs(parsed.query)
+                query = parse_qs(urlparse(candidate).query)
                 page_value = query.get("page", query.get("page_num", [""]))[0]
                 if page_value.isdigit() and candidate not in page_urls:
                     page_urls.append(candidate)
