@@ -6,7 +6,6 @@ from urllib.parse import parse_qs, urljoin, urlparse
 from playwright.sync_api import sync_playwright
 
 BASE_URL = "https://herotime.co.kr"
-# Cafe24 product URLs are typically /product/<slug>/<product_no>/category/.../display/1/
 PRODUCT_URL_RE = re.compile(r"^https?://(?:www\.)?herotime\.co\.kr/product/[^?#]+/(\d+)(?:/|$)", re.I)
 
 
@@ -15,11 +14,9 @@ def normalize_text(value: str | None) -> str:
 
 
 def parse_price(text: str) -> str:
-    # Prefer amounts followed by 원. Avoid dates, quantities and product IDs.
     matches = re.findall(r"(?<!\d)(\d{1,3}(?:,\d{3})+|\d{4,9})\s*원", text or "")
     if not matches:
         return "가격 정보 없음"
-    # The first visible '원' amount in a Cafe24 product card is normally the sale price.
     return f"{int(matches[0].replace(',', '')):,}원"
 
 
@@ -29,8 +26,6 @@ def product_id_from_url(url: str) -> str | None:
 
 
 def find_product_container(link):
-    # HeroTime uses a Cafe24 skin. Try the common product-card wrappers from
-    # most specific to broadest. The final fallback still keeps extraction local.
     selectors = (
         "xpath=ancestor::li[contains(@class,'xans-record')][1]",
         "xpath=ancestor::li[contains(@class,'prdList__item')][1]",
@@ -90,8 +85,6 @@ def extract_product(link) -> dict | None:
     container = find_product_container(link)
     card_text = normalize_text(container.inner_text())
 
-    # Cafe24 product cards generally expose the name in .name. Include
-    # additional common skin selectors because HeroTime can change its skin.
     name = first_text(
         container,
         (
@@ -103,22 +96,19 @@ def extract_product(link) -> dict | None:
             '[class*="prdName"]',
             '[class*="product_name"] a',
             '[class*="product_name"]',
-            '[class*="description"] a",
+            '[class*="description"] a',
         ),
     )
 
     if not name:
-        # Sometimes the product link itself contains the visible product name.
         name = normalize_text(link.inner_text())
 
     if not name:
-        # Last-resort metadata from the card.
         name = normalize_text(link.get_attribute("title"))
 
     if not name:
         return None
 
-    # Prefer an explicit sale-price element when available, then card text.
     price = first_text(
         container,
         (
@@ -130,7 +120,6 @@ def extract_product(link) -> dict | None:
         ),
     )
     price = parse_price(price or card_text)
-
     image = first_image(container)
 
     return {
@@ -153,8 +142,6 @@ def collect_current_page(page, products: dict[str, dict], max_products: int) -> 
             product = extract_product(links.nth(i))
             if not product:
                 continue
-            # Search pages can contain the same product link several times
-            # (image, name, wishlist, quick-view). Product number is the stable key.
             products[product["id"]] = product
         except Exception as exc:
             print(f"[skip] product link {i}: {exc}")
@@ -163,9 +150,6 @@ def collect_current_page(page, products: dict[str, dict], max_products: int) -> 
 
 
 def crawl_products(search_url: str, max_products: int = 1000, keywords: list[str] | None = None) -> list[dict]:
-    # The URL already performs the '미쿠' search. Do not filter here: the main
-    # program performs the final keyword check. This prevents a malformed card
-    # name from causing products to disappear before we can inspect them.
     products: dict[str, dict] = {}
 
     with sync_playwright() as p:
@@ -187,12 +171,8 @@ def crawl_products(search_url: str, max_products: int = 1000, keywords: list[str
             print(f"Page title: {normalize_text(page.title())}")
             print(f"Final URL: {page.url}")
 
-            # First collect every product currently rendered on the search page.
             collect_current_page(page, products, max_products)
 
-            # Cafe24 search/list pages commonly paginate with page= / page_num=.
-            # Follow explicit numeric pagination links so the monitor can cover
-            # the whole result set without guessing a page count.
             pagination_links = page.locator(
                 'a[href*="page="], a[href*="page_num="], a[href*="?page"]'
             )
@@ -208,7 +188,6 @@ def crawl_products(search_url: str, max_products: int = 1000, keywords: list[str
                 if page_value.isdigit() and candidate not in page_urls:
                     page_urls.append(candidate)
 
-            # Visit discovered pagination URLs in ascending page-number order.
             def page_number(url: str) -> int:
                 query = parse_qs(urlparse(url).query)
                 value = query.get("page", query.get("page_num", ["1"]))[0]
