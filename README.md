@@ -1,38 +1,39 @@
-# SmartStoreMonitor
+# HeroTime Miku Monitor
 
-네이버 스마트스토어에서 상품을 주기적으로 확인하고, 상품명에 설정한 키워드가 포함된 신규 상품을 Discord Webhook으로 알리는 개인용 모니터입니다.
+HeroTime 검색 결과에서 `미쿠` 상품을 Playwright로 수집하고, 처음 발견한 상품을 Discord Webhook으로 알립니다.
 
-## 현재 설정
+## 대상 페이지
 
-- Store: https://smartstore.naver.com/gsc_korea_dt_pw
-- Keyword: `미쿠`
-- Check schedule: GitHub Actions 기준 5분마다 예약 실행
-- Browser: Playwright Chromium
-- Duplicate state: `data/products.json`
+https://herotime.co.kr/product/search.html?banner_action=&keyword=%EB%AF%B8%EC%BF%A0
+
+## 수집 정보
+
+- 상품명
+- 판매 가격
+- 상품 이미지
+- 상품 URL
+- 상품 ID
+
+## 동작 방식
+
+1. GitHub Actions가 약 5분 주기로 실행됩니다.
+2. Playwright Chromium으로 HeroTime 검색 페이지를 엽니다.
+3. `/product/.../상품ID/` 형태의 상품 링크를 찾습니다.
+4. 상품 카드에서 이름/가격/이미지를 추출합니다.
+5. `data/products.json`에 이미 저장된 상품 ID인지 확인합니다.
+6. 처음 발견한 상품이면 Discord Webhook으로 알립니다.
+7. 새 상품 상태를 GitHub에 커밋합니다.
 
 ## Discord 설정
 
-GitHub Repository의 `Settings → Secrets and variables → Actions`에서 다음 Repository Secret을 추가합니다.
+GitHub Repository의 Settings → Secrets and variables → Actions에서 다음 Secret을 추가합니다.
 
-- Name: `DISCORD_WEBHOOK_URL`
-- Value: Discord 채널의 Webhook URL
+`DISCORD_WEBHOOK_URL`
 
-Webhook URL을 소스 코드나 `config.json`에 저장하지 마세요.
+값에는 Discord 채널의 Webhook URL을 입력합니다.
 
-## 실행
+## 수동 테스트
 
-GitHub Actions의 `SmartStore Miku Monitor` workflow에서 `Run workflow`를 선택하면 수동 실행할 수 있습니다.
+GitHub → Actions → `HeroTime Miku Monitor` → `Run workflow`를 실행합니다.
 
-자동 실행은 `.github/workflows/monitor.yml`의 schedule에 의해 수행됩니다. GitHub Actions의 scheduled workflow는 정확한 시각에 실행된다고 보장되지 않을 수 있습니다.
-
-## 로컬 테스트
-
-```bash
-python -m pip install -r requirements.txt
-playwright install chromium
-python src/main.py
-```
-
-## 주의
-
-SmartStore의 페이지 구조가 변경되면 `src/crawler.py`의 상품 링크 수집 로직을 수정해야 할 수 있습니다. 이 프로젝트는 공개/공식 API를 우회하는 인증 정보나 비공개 API를 사용하지 않습니다.
+> GitHub Actions의 scheduled workflow는 정확히 5분마다 실행된다고 보장되지 않습니다. GitHub의 실행 지연이 발생할 수 있습니다.
