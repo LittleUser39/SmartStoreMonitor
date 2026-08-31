@@ -27,9 +27,17 @@ def main() -> None:
     config = load_config()
     keywords = config["keywords"]
 
+    # Do not impose a 100-product fallback here. crawler.py defaults to
+    # max_products=None, which means all discovered pagination pages are
+    # crawled. A finite limit can still be configured explicitly in config.json
+    # when needed.
+    max_products = config.get("max_products")
+    if max_products is not None:
+        max_products = int(max_products)
+
     products = crawl_products(
         config["store_url"],
-        int(config.get("max_products", 100)),
+        max_products=max_products,
         keywords=keywords,
     )
 
