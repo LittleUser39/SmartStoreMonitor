@@ -25,15 +25,18 @@ def find_keyword(name: str, keywords: list[str]) -> str | None:
 
 def main() -> None:
     config = load_config()
+    keywords = config["keywords"]
+
     products = crawl_products(
         config["store_url"],
         int(config.get("max_products", 100)),
+        keywords=keywords,
     )
 
     print(f"Collected {len(products)} product candidates")
 
     for product in products:
-        keyword = find_keyword(product["name"], config["keywords"])
+        keyword = find_keyword(product["name"], keywords)
         if not keyword:
             continue
 
