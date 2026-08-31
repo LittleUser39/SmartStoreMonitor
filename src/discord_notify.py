@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 import requests
 
 
@@ -10,14 +11,14 @@ def send_discord_notification(product: dict) -> None:
         raise RuntimeError("DISCORD_WEBHOOK_URL is not configured")
 
     embed = {
-        "title": "🔔 미쿠 신규 상품 발견!",
+        "title": "🔔 HeroTime 미쿠 상품 발견!",
         "description": product["name"],
         "url": product["url"],
         "fields": [
             {"name": "가격", "value": product.get("price", "가격 정보 없음"), "inline": True},
             {"name": "키워드", "value": product.get("keyword", "미쿠"), "inline": True},
         ],
-        "footer": {"text": "SmartStoreMonitor"},
+        "footer": {"text": "HeroTime Monitor"},
     }
 
     if product.get("image"):
