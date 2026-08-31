@@ -1,4 +1,4 @@
-name: SmartStore Miku Monitor
+name: HeroTime Miku Monitor
 
 on:
   schedule:
@@ -27,15 +27,16 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps chromium
 
-      - name: Run monitor
+      - name: Run HeroTime monitor
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python src/main.py
 
       - name: Persist product state
+        if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/products.json
-          git diff --cached --quiet || git commit -m "Update monitored products"
+          git diff --cached --quiet || git commit -m "Update HeroTime monitored products"
           git push
