@@ -6,7 +6,6 @@ from urllib.parse import parse_qs, urljoin, urlparse
 from playwright.sync_api import sync_playwright
 
 BASE_URL = "https://herotime.co.kr"
-PRODUCT_PATH_RE = re.compile(r"^/product/[^?#]+(?:/category/\d+)?(?:/display/\d+)?/?$", re.I)
 PRODUCT_ID_RE = re.compile(r"/product/[^/]+/(\d+)(?:/|$)", re.I)
 
 
@@ -129,7 +128,7 @@ def extract_product(link) -> dict | None:
     }
 
 
-def collect_current_page(page, products: dict[str, dict], max_products: int, debug_links: bool = False) -> int:
+def collect_current_page(page, products: dict[str, dict], max_products: int | None, debug_links: bool = False) -> int:
     links = page.locator('a[href*="/product/"]')
     count = links.count()
     print(f"Candidate /product/ links on page: {count}")
@@ -147,7 +146,7 @@ def collect_current_page(page, products: dict[str, dict], max_products: int, deb
         print("--- end diagnostics ---")
 
     for i in range(count):
-        if len(products) >= max_products:
+        if max_products is not None and len(products) >= max_products:
             break
         try:
             product = extract_product(links.nth(i))
@@ -160,7 +159,7 @@ def collect_current_page(page, products: dict[str, dict], max_products: int, deb
     return len(products)
 
 
-def crawl_products(search_url: str, max_products: int = 1000, keywords: list[str] | None = None) -> list[dict]:
+def crawl_products(search_url: str, max_products: int | None = None, keywords: list[str] | None = None) -> list[dict]:
     products: dict[str, dict] = {}
 
     with sync_playwright() as p:
@@ -182,7 +181,6 @@ def crawl_products(search_url: str, max_products: int = 1000, keywords: list[str
             print(f"Page title: {normalize_text(page.title())}")
             print(f"Final URL: {page.url}")
 
-            # Run diagnostics only on the initial search page so the Actions log stays manageable.
             collect_current_page(page, products, max_products, debug_links=True)
 
             pagination_links = page.locator(
@@ -207,9 +205,13 @@ def crawl_products(search_url: str, max_products: int = 1000, keywords: list[str
             page_urls.sort(key=page_number)
             print(f"Discovered pagination pages: {len(page_urls)}")
 
+            visited_urls = {page.url}
             for page_url in page_urls:
-                if len(products) >= max_products:
+                if max_products is not None and len(products) >= max_products:
                     break
+                if page_url in visited_urls:
+                    continue
+                visited_urls.add(page_url)
                 try:
                     page.goto(page_url, wait_until="domcontentloaded", timeout=60_000)
                     page.wait_for_timeout(1_500)
@@ -219,7 +221,10 @@ def crawl_products(search_url: str, max_products: int = 1000, keywords: list[str
                 except Exception as exc:
                     print(f"[pagination skip] {page_url}: {exc}")
 
-            result = list(products.values())[:max_products]
+            result = list(products.values())
+            if max_products is not None:
+                result = result[:max_products]
+
             print(f"Collected {len(result)} HeroTime products")
             for product in result[:10]:
                 print(f"  - {product['id']} | {product['name']} | {product['price']}")
