@@ -6,6 +6,7 @@ from pathlib import Path
 from crawler import crawl_products
 from database import add_product, is_new_product
 from discord_notify import send_discord_notifications
+from notion_sender import send_notion_notifications
 
 CONFIG_FILE = Path("config.json")
 
@@ -27,10 +28,6 @@ def main() -> None:
     config = load_config()
     keywords = config["keywords"]
 
-    # Do not impose a 100-product fallback here. crawler.py defaults to
-    # max_products=None, which means all discovered pagination pages are
-    # crawled. A finite limit can still be configured explicitly in config.json
-    # when needed.
     max_products = config.get("max_products")
     if max_products is not None:
         max_products = int(max_products)
@@ -65,13 +62,11 @@ def main() -> None:
 
     print(f"New products to notify: {len(new_products)}")
 
-    # Send in batches. If Discord returns 429, discord_notify.py waits for
-    # Discord's retry_after value and retries automatically.
+    # Both destinations must succeed before product state is persisted.
     send_discord_notifications(new_products)
+    send_notion_notifications(new_products)
 
-    # Only persist products after their Discord notifications were sent.
-    # This prevents a failed notification from permanently marking a product
-    # as already notified.
+    # Only persist products after both Discord and Notion notifications succeed.
     for product in new_products:
         add_product(product)
 
