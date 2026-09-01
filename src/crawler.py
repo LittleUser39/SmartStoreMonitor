@@ -128,6 +128,37 @@ def extract_product(link) -> dict | None:
     }
 
 
+def is_sold_out(detail_page, product: dict) -> bool:
+    """Check the product detail page for a visible SOLD OUT/품절 purchase state."""
+    try:
+        detail_page.goto(product["url"], wait_until="domcontentloaded", timeout=60_000)
+        detail_page.wait_for_timeout(800)
+
+        # Prefer visible purchase-area controls/text. HeroTime currently renders
+        # sold-out products with a visible "SOLD OUT" state in the purchase UI.
+        sold_out_locators = (
+            detail_page.get_by_text(re.compile(r"^SOLD\s*OUT$", re.I)).filter(visible=True),
+            detail_page.get_by_text(re.compile(r"^품절$"), exact=True).filter(visible=True),
+        )
+        for locator in sold_out_locators:
+            if locator.count() > 0:
+                return True
+
+        # Fallback: inspect visible text around the purchase/action area without
+        # treating unrelated hidden page content as a sold-out signal.
+        action_area = detail_page.locator(
+            ".xans-product-action, #NaverChk_Button, .product-detail, .detailArea"
+        ).filter(visible=True)
+        if action_area.count() > 0:
+            text = normalize_text(action_area.first.inner_text())
+            if re.search(r"\bSOLD\s*OUT\b|\b품절\b", text, re.I):
+                return True
+    except Exception as exc:
+        print(f"[soldout check skip] {product['id']} | {product['name']}: {exc}")
+
+    return False
+
+
 def collect_current_page(page, products: dict[str, dict], max_products: int | None, debug_links: bool = False) -> int:
     links = page.locator('a[href*="/product/"]')
     count = links.count()
@@ -173,6 +204,7 @@ def crawl_products(search_url: str, max_products: int | None = None, keywords: l
             ),
         )
         page = context.new_page()
+        detail_page = context.new_page()
         try:
             response = page.goto(search_url, wait_until="domcontentloaded", timeout=60_000)
             page.wait_for_timeout(2_500)
@@ -225,10 +257,25 @@ def crawl_products(search_url: str, max_products: int | None = None, keywords: l
             if max_products is not None:
                 result = result[:max_products]
 
-            print(f"Collected {len(result)} HeroTime products")
-            for product in result[:10]:
+            # Check the detail page only after collecting the search results so
+            # pagination remains fast and max_products still applies to the
+            # collected candidate set. Sold-out products are removed before
+            # main.py compares and notifies new products.
+            available_products: list[dict] = []
+            sold_out_count = 0
+            for product in result:
+                if is_sold_out(detail_page, product):
+                    print(f"[SoldOut] {product['id']} | {product['name']}")
+                    sold_out_count += 1
+                    continue
+                available_products.append(product)
+
+            print(f"Sold-out products excluded: {sold_out_count}")
+            print(f"Collected {len(available_products)} available HeroTime products")
+            for product in available_products[:10]:
                 print(f"  - {product['id']} | {product['name']} | {product['price']}")
-            return result
+            return available_products
         finally:
+            detail_page.close()
             context.close()
             browser.close()
