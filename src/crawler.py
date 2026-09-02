@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from playwright.sync_api import sync_playwright
 
@@ -24,6 +24,14 @@ def product_id_from_url(url: str) -> str | None:
     path = urlparse(url).path
     match = PRODUCT_ID_RE.search(path)
     return match.group(1) if match else None
+
+
+def build_keyword_search_url(search_url: str, keyword: str) -> str:
+    """Replace only the search keyword while preserving the existing URL parameters."""
+    parsed = urlparse(search_url)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    query["keyword"] = [keyword]
+    return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
 
 
 def find_product_container(link):
@@ -134,8 +142,6 @@ def is_sold_out(detail_page, product: dict) -> bool:
         detail_page.goto(product["url"], wait_until="domcontentloaded", timeout=60_000)
         detail_page.wait_for_timeout(800)
 
-        # Prefer visible purchase-area controls/text. HeroTime currently renders
-        # sold-out products with a visible "SOLD OUT" state in the purchase UI.
         sold_out_locators = (
             detail_page.get_by_text(re.compile(r"^SOLD\s*OUT$", re.I)).filter(visible=True),
             detail_page.get_by_text(re.compile(r"^품절$"), exact=True).filter(visible=True),
@@ -144,8 +150,6 @@ def is_sold_out(detail_page, product: dict) -> bool:
             if locator.count() > 0:
                 return True
 
-        # Fallback: inspect visible text around the purchase/action area without
-        # treating unrelated hidden page content as a sold-out signal.
         action_area = detail_page.locator(
             ".xans-product-action, #NaverChk_Button, .product-detail, .detailArea"
         ).filter(visible=True)
@@ -192,6 +196,14 @@ def collect_current_page(page, products: dict[str, dict], max_products: int | No
 
 def crawl_products(search_url: str, max_products: int | None = None, keywords: list[str] | None = None) -> list[dict]:
     products: dict[str, dict] = {}
+    keywords = [keyword.strip() for keyword in (keywords or []) if keyword and keyword.strip()]
+
+    # Keep backward compatibility: if keywords are not supplied, crawl the
+    # original search URL exactly as configured.
+    search_targets = [(None, search_url)] if not keywords else [
+        (keyword, build_keyword_search_url(search_url, keyword))
+        for keyword in keywords
+    ]
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -206,61 +218,62 @@ def crawl_products(search_url: str, max_products: int | None = None, keywords: l
         page = context.new_page()
         detail_page = context.new_page()
         try:
-            response = page.goto(search_url, wait_until="domcontentloaded", timeout=60_000)
-            page.wait_for_timeout(2_500)
-
-            print(f"HTTP status: {response.status if response else 'unknown'}")
-            print(f"Page title: {normalize_text(page.title())}")
-            print(f"Final URL: {page.url}")
-
-            collect_current_page(page, products, max_products, debug_links=True)
-
-            pagination_links = page.locator(
-                'a[href*="page="], a[href*="page_num="], a[href*="?page"]'
-            )
-            page_urls: list[str] = []
-            for i in range(pagination_links.count()):
-                href = pagination_links.nth(i).get_attribute("href")
-                if not href:
-                    continue
-                candidate = urljoin(page.url, href)
-                query = parse_qs(urlparse(candidate).query)
-                page_value = query.get("page", query.get("page_num", [""]))[0]
-                if page_value.isdigit() and candidate not in page_urls:
-                    page_urls.append(candidate)
-
-            def page_number(url: str) -> int:
-                query = parse_qs(urlparse(url).query)
-                value = query.get("page", query.get("page_num", ["1"]))[0]
-                return int(value) if value.isdigit() else 1
-
-            page_urls.sort(key=page_number)
-            print(f"Discovered pagination pages: {len(page_urls)}")
-
-            visited_urls = {page.url}
-            for page_url in page_urls:
+            for keyword, target_url in search_targets:
                 if max_products is not None and len(products) >= max_products:
                     break
-                if page_url in visited_urls:
-                    continue
-                visited_urls.add(page_url)
-                try:
-                    page.goto(page_url, wait_until="domcontentloaded", timeout=60_000)
-                    page.wait_for_timeout(1_500)
-                    before = len(products)
-                    collect_current_page(page, products, max_products)
-                    print(f"Page {page_number(page_url)}: +{len(products) - before} products")
-                except Exception as exc:
-                    print(f"[pagination skip] {page_url}: {exc}")
+
+                print(f"=== Keyword: {keyword or '(configured search URL)'} ===")
+                response = page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
+                page.wait_for_timeout(2_500)
+
+                print(f"HTTP status: {response.status if response else 'unknown'}")
+                print(f"Page title: {normalize_text(page.title())}")
+                print(f"Final URL: {page.url}")
+
+                collect_current_page(page, products, max_products, debug_links=True)
+
+                pagination_links = page.locator(
+                    'a[href*="page="], a[href*="page_num="], a[href*="?page"]'
+                )
+                page_urls: list[str] = []
+                for i in range(pagination_links.count()):
+                    href = pagination_links.nth(i).get_attribute("href")
+                    if not href:
+                        continue
+                    candidate = urljoin(page.url, href)
+                    query = parse_qs(urlparse(candidate).query)
+                    page_value = query.get("page", query.get("page_num", [""]))[0]
+                    if page_value.isdigit() and candidate not in page_urls:
+                        page_urls.append(candidate)
+
+                def page_number(url: str) -> int:
+                    query = parse_qs(urlparse(url).query)
+                    value = query.get("page", query.get("page_num", ["1"]))[0]
+                    return int(value) if value.isdigit() else 1
+
+                page_urls.sort(key=page_number)
+                print(f"Discovered pagination pages: {len(page_urls)}")
+
+                visited_urls = {page.url}
+                for page_url in page_urls:
+                    if max_products is not None and len(products) >= max_products:
+                        break
+                    if page_url in visited_urls:
+                        continue
+                    visited_urls.add(page_url)
+                    try:
+                        page.goto(page_url, wait_until="domcontentloaded", timeout=60_000)
+                        page.wait_for_timeout(1_500)
+                        before = len(products)
+                        collect_current_page(page, products, max_products)
+                        print(f"Page {page_number(page_url)}: +{len(products) - before} products")
+                    except Exception as exc:
+                        print(f"[pagination skip] {page_url}: {exc}")
 
             result = list(products.values())
             if max_products is not None:
                 result = result[:max_products]
 
-            # Check the detail page only after collecting the search results so
-            # pagination remains fast and max_products still applies to the
-            # collected candidate set. Sold-out products are removed before
-            # main.py compares and notifies new products.
             available_products: list[dict] = []
             sold_out_count = 0
             for product in result:
