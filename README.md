@@ -1,10 +1,41 @@
-# HeroTime Miku Monitor
+# HeroTime Product Monitor
 
-HeroTime 검색 결과에서 `미쿠` 상품을 Playwright로 수집하고, 처음 발견한 상품을 Discord Webhook으로 알립니다.
+HeroTime 검색 결과에서 `config.json`에 등록한 여러 키워드의 상품을 Playwright로 수집하고, 처음 발견한 상품을 Discord Webhook과 Notion으로 알립니다.
 
 ## 대상 페이지
 
-https://herotime.co.kr/product/search.html?banner_action=&keyword=%EB%AF%B8%EC%BF%A0
+`config.json`의 `store_url`을 기준으로 검색하며, `keywords`에 원하는 키워드를 원하는 만큼 등록할 수 있습니다.
+
+## 키워드 설정
+
+`config.json`의 `keywords` 배열만 수정하면 됩니다.
+
+```json
+{
+  "store_url": "https://herotime.co.kr/product/search.html?banner_action=&keyword=%EB%AF%B8%EC%BF%A0",
+  "keywords": [
+    "미쿠",
+    "니케",
+    "블루아카이브"
+  ]
+}
+```
+
+- 키워드를 추가하려면 배열에 문자열을 추가합니다.
+- 키워드를 삭제하려면 해당 문자열을 삭제합니다.
+- 키워드는 1개만 등록해도 됩니다.
+- 키워드 개수에 별도의 코드 수정은 필요하지 않습니다.
+- `max_products`를 설정하지 않으면 검색 결과의 전체 페이지를 대상으로 수집합니다.
+
+## 수집 방식
+
+1. `keywords`의 키워드를 하나씩 HeroTime 검색 URL에 적용합니다.
+2. 각 키워드의 페이지네이션을 끝까지 확인합니다.
+3. 상품 ID 기준으로 중복 상품을 제거합니다. 여러 키워드에 동시에 검색되는 상품도 한 번만 처리합니다.
+4. 상품 상세 페이지에서 `SOLD OUT` 또는 `품절` 상태를 확인하고 품절 상품은 제외합니다.
+5. `data/products.json`에 이미 저장된 상품 ID인지 확인합니다.
+6. 처음 발견한 상품이면 Discord Webhook과 Notion으로 알립니다.
+7. 두 알림이 모두 성공한 뒤 새 상품 상태를 저장합니다.
 
 ## 수집 정보
 
@@ -13,16 +44,6 @@ https://herotime.co.kr/product/search.html?banner_action=&keyword=%EB%AF%B8%EC%B
 - 상품 이미지
 - 상품 URL
 - 상품 ID
-
-## 동작 방식
-
-1. GitHub Actions가 약 5분 주기로 실행됩니다.
-2. Playwright Chromium으로 HeroTime 검색 페이지를 엽니다.
-3. `/product/.../상품ID/` 형태의 상품 링크를 찾습니다.
-4. 상품 카드에서 이름/가격/이미지를 추출합니다.
-5. `data/products.json`에 이미 저장된 상품 ID인지 확인합니다.
-6. 처음 발견한 상품이면 Discord Webhook으로 알립니다.
-7. 새 상품 상태를 GitHub에 커밋합니다.
 
 ## Discord 설정
 
