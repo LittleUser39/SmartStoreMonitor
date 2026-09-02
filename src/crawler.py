@@ -151,6 +151,38 @@ def is_sold_out(detail_page, product: dict) -> bool:
         return False
 
 
+def cleanup_sold_out_products(products: dict[str, dict]) -> list[str]:
+    """Return IDs from the existing database that currently contain exact 'SOLD OUT'."""
+    if not products:
+        return []
+
+    sold_out_ids: list[str] = []
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            locale="ko-KR",
+            viewport={"width": 1440, "height": 1200},
+            user_agent=(
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            ),
+        )
+        detail_page = context.new_page()
+        try:
+            print(f"Checking existing database products: {len(products)}")
+            for product_id, product in products.items():
+                if is_sold_out(detail_page, product):
+                    print(f"[DB SoldOut] {product_id} | {product.get('name', 'Unknown')}")
+                    sold_out_ids.append(str(product_id))
+        finally:
+            detail_page.close()
+            context.close()
+            browser.close()
+
+    return sold_out_ids
+
+
 def collect_current_page(page, products: dict[str, dict], max_products: int | None, debug_links: bool = False) -> int:
     links = page.locator('a[href*="/product/"]')
     count = links.count()
