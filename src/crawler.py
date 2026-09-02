@@ -136,6 +136,138 @@ def extract_product(link) -> dict | None:
     }
 
 
+def debug_compare_sold_out_pages() -> None:
+    """Compare SOLD OUT DOM structures for known in-stock and sold-out products."""
+    test_products = [
+        {
+            "id": "76080",
+            "name": "판매중 상품",
+            "url": "https://herotime.co.kr/product/detail.html?product_no=76080&cate_no=1&display_group=25",
+        },
+        {
+            "id": "69294",
+            "name": "품절 상품",
+            "url": "https://herotime.co.kr/product/%EC%9E%85%EA%B3%A0%EC%99%84%EB%A3%8C%EA%B5%BF%EC%8A%A4%EB%A7%88%EC%9D%BC%EC%BB%B4%ED%8D%BC%EB%8B%88-%EB%84%A8%EB%8F%84%EB%A1%9C%EC%9D%B4%EB%93%9C%EC%BA%90%EB%A6%AD%ED%84%B0%EB%B3%B4%EC%BB%AC%EC%8B%9C%EB%A6%AC%EC%A6%8801-%ED%95%98%EC%B8%A0%EB%84%A4%EB%AF%B8%EC%BF%A0-%EB%A7%88%EB%84%A4%ED%82%A4%EB%AF%B8%EC%BF%A0ver%EC%9E%AC%ED%8C%90/69294/category/63/display/1/",
+        },
+    ]
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            locale="ko-KR",
+            viewport={"width": 1440, "height": 1200},
+            user_agent=(
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            ),
+        )
+        page = context.new_page()
+
+        try:
+            for product in test_products:
+                print()
+                print("=" * 80)
+                print(f"[SOLD OUT DOM DEBUG] {product['id']} | {product['name']}")
+                print("=" * 80)
+
+                response = page.goto(
+                    product["url"],
+                    wait_until="domcontentloaded",
+                    timeout=60_000,
+                )
+                page.wait_for_timeout(2_000)
+
+                print(f"HTTP status : {response.status if response else 'unknown'}")
+                print(f"Final URL   : {page.url}")
+                print(f"Page title  : {normalize_text(page.title())}")
+
+                sold_out = page.get_by_text("SOLD OUT", exact=True)
+                count = sold_out.count()
+                print(f"SOLD OUT count: {count}")
+
+                if count == 0:
+                    print(">>> SOLD OUT 요소가 DOM에 존재하지 않습니다.")
+                    continue
+
+                for index in range(count):
+                    element = sold_out.nth(index)
+                    print()
+                    print(f"--- SOLD OUT #{index} ---")
+
+                    try:
+                        print("visible      :", element.is_visible())
+                    except Exception:
+                        print("visible      : ERROR")
+
+                    try:
+                        print("enabled      :", element.is_enabled())
+                    except Exception:
+                        print("enabled      : ERROR")
+
+                    try:
+                        print("tag          :", element.evaluate("(el) => el.tagName"))
+                    except Exception:
+                        print("tag          : ERROR")
+
+                    try:
+                        print("class        :", element.get_attribute("class"))
+                    except Exception:
+                        print("class        : ERROR")
+
+                    try:
+                        print("id           :", element.get_attribute("id"))
+                    except Exception:
+                        print("id           : ERROR")
+
+                    try:
+                        print("style        :", element.get_attribute("style"))
+                    except Exception:
+                        print("style        : ERROR")
+
+                    try:
+                        outer_html = element.evaluate("(el) => el.outerHTML")
+                        print("outerHTML    :")
+                        print(outer_html[:3000])
+                    except Exception:
+                        print("outerHTML    : ERROR")
+
+                    try:
+                        parent_html = element.evaluate(
+                            "(el) => el.parentElement?.outerHTML || ''"
+                        )
+                        print("parentHTML   :")
+                        print(parent_html[:5000])
+                    except Exception:
+                        print("parentHTML   : ERROR")
+
+                    try:
+                        ancestor_html = element.evaluate(
+                            """
+                            (el) => {
+                                let current = el;
+                                let result = [];
+
+                                for (let i = 0; i < 5 && current; i++) {
+                                    result.push(current.outerHTML);
+                                    current = current.parentElement;
+                                }
+
+                                return result.join(
+                                    "\\n\\n--- ANCESTOR ---\\n\\n"
+                                );
+                            }
+                            """
+                        )
+                        print("ancestorHTML :")
+                        print(ancestor_html[:10000])
+                    except Exception:
+                        print("ancestorHTML : ERROR")
+        finally:
+            page.close()
+            context.close()
+            browser.close()
+
+
 def is_sold_out(detail_page, product: dict) -> bool:
     """Return True only when the product detail page contains the text 'SOLD OUT'."""
     try:
