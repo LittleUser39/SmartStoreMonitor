@@ -137,30 +137,18 @@ def extract_product(link) -> dict | None:
 
 
 def is_sold_out(detail_page, product: dict) -> bool:
-    """Check the product detail page for a visible SOLD OUT/품절 purchase state."""
+    """Return True only when the product detail page contains the text 'SOLD OUT'."""
     try:
         detail_page.goto(product["url"], wait_until="domcontentloaded", timeout=60_000)
         detail_page.wait_for_timeout(800)
 
-        sold_out_locators = (
-            detail_page.get_by_text(re.compile(r"^SOLD\s*OUT$", re.I)).filter(visible=True),
-            detail_page.get_by_text(re.compile(r"^품절$"), exact=True).filter(visible=True),
-        )
-        for locator in sold_out_locators:
-            if locator.count() > 0:
-                return True
-
-        action_area = detail_page.locator(
-            ".xans-product-action, #NaverChk_Button, .product-detail, .detailArea"
-        ).filter(visible=True)
-        if action_area.count() > 0:
-            text = normalize_text(action_area.first.inner_text())
-            if re.search(r"\bSOLD\s*OUT\b|\b품절\b", text, re.I):
-                return True
+        # The only sold-out criterion is the literal text "SOLD OUT".
+        # Do not inspect "품절", CSS classes, images, or purchase-area state.
+        sold_out_text = detail_page.get_by_text("SOLD OUT", exact=True)
+        return sold_out_text.count() > 0
     except Exception as exc:
         print(f"[soldout check skip] {product['id']} | {product['name']}: {exc}")
-
-    return False
+        return False
 
 
 def collect_current_page(page, products: dict[str, dict], max_products: int | None, debug_links: bool = False) -> int:
@@ -198,8 +186,6 @@ def crawl_products(search_url: str, max_products: int | None = None, keywords: l
     products: dict[str, dict] = {}
     keywords = [keyword.strip() for keyword in (keywords or []) if keyword and keyword.strip()]
 
-    # Keep backward compatibility: if keywords are not supplied, crawl the
-    # original search URL exactly as configured.
     search_targets = [(None, search_url)] if not keywords else [
         (keyword, build_keyword_search_url(search_url, keyword))
         for keyword in keywords
