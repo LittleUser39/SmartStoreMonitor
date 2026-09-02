@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from crawler import cleanup_sold_out_products, crawl_products
+# from crawler import cleanup_sold_out_products, crawl_products
+#DebugTest
+from crawler import (
+    cleanup_sold_out_products,
+    crawl_products,
+    debug_compare_sold_out_pages,
+)
 from database import add_product, is_new_product, load_products, remove_products
 from discord_notify import send_discord_notifications
 from notion_sender import send_notion_notifications
@@ -26,6 +32,9 @@ def find_keyword(name: str, keywords: list[str]) -> str | None:
 
 def main() -> None:
     config = load_config()
+    #DebugTest
+      debug_compare_sold_out_pages()
+    return
     keywords = config["keywords"]
 
     # Recheck products already saved in products.json first.
