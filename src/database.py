@@ -30,3 +30,23 @@ def add_product(product: dict) -> None:
     products = load_products()
     products[str(product["id"])] = product
     save_products(products)
+
+
+def remove_products(product_ids: list[str]) -> int:
+    """Remove products by ID and return the number of removed entries."""
+    if not product_ids:
+        return 0
+
+    products = load_products()
+    removed_count = 0
+
+    for product_id in product_ids:
+        product_id = str(product_id)
+        if product_id in products:
+            del products[product_id]
+            removed_count += 1
+
+    if removed_count:
+        save_products(products)
+
+    return removed_count
