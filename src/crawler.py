@@ -269,17 +269,38 @@ def debug_compare_sold_out_pages() -> None:
 
 
 def is_sold_out(detail_page, product: dict) -> bool:
-    """Return True only when the product detail page contains the text 'SOLD OUT'."""
+    """Return True only when a visible SOLD OUT exists in the product action area."""
     try:
-        detail_page.goto(product["url"], wait_until="domcontentloaded", timeout=60_000)
+        detail_page.goto(
+            product["url"],
+            wait_until="domcontentloaded",
+            timeout=60_000,
+        )
         detail_page.wait_for_timeout(800)
 
-        # The only sold-out criterion is the literal text "SOLD OUT".
-        # Do not inspect "품절", CSS classes, images, or purchase-area state.
-        sold_out_text = detail_page.get_by_text("SOLD OUT", exact=True)
-        return sold_out_text.count() > 0
+        # Only inspect the actual product purchase/action area.
+        sold_out = detail_page.locator(
+            ".xans-product-action .ec-base-button > span.btnEm.gFlex2"
+        )
+
+        for i in range(sold_out.count()):
+            element = sold_out.nth(i)
+
+            if not element.is_visible():
+                continue
+
+            text = normalize_text(element.inner_text())
+
+            if text == "SOLD OUT":
+                return True
+
+        return False
+
     except Exception as exc:
-        print(f"[soldout check skip] {product['id']} | {product['name']}: {exc}")
+        print(
+            f"[soldout check skip] "
+            f"{product['id']} | {product['name']}: {exc}"
+        )
         return False
 
 
