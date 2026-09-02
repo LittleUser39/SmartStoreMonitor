@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from crawler import crawl_products
-from database import add_product, is_new_product
+from crawler import cleanup_sold_out_products, crawl_products
+from database import add_product, is_new_product, load_products, remove_products
 from discord_notify import send_discord_notifications
 from notion_sender import send_notion_notifications
 
@@ -27,6 +27,13 @@ def find_keyword(name: str, keywords: list[str]) -> str | None:
 def main() -> None:
     config = load_config()
     keywords = config["keywords"]
+
+    # Recheck products already saved in products.json first.
+    # Only entries whose detail page contains the exact text "SOLD OUT" are removed.
+    existing_products = load_products()
+    sold_out_ids = cleanup_sold_out_products(existing_products)
+    removed_count = remove_products(sold_out_ids)
+    print(f"Removed sold-out products from database: {removed_count}")
 
     max_products = config.get("max_products")
     if max_products is not None:
