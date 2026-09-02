@@ -33,7 +33,7 @@ def find_keyword(name: str, keywords: list[str]) -> str | None:
 def main() -> None:
     config = load_config()
     #DebugTest
-      debug_compare_sold_out_pages()
+    debug_compare_sold_out_pages()
     return
     keywords = config["keywords"]
 
