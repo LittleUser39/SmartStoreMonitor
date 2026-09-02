@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import requests
 
-NOTION_API_URL = "https://api.notion.com/v1/pages"
+NOTION_API_BASE = "https://api.notion.com/v1"
 NOTION_VERSION = "2025-09-03"
 MAX_RETRIES = 5
 DEFAULT_RETRY_SECONDS = 2.0
@@ -24,15 +24,76 @@ def _get_config() -> tuple[str, str]:
     return token, data_source_id
 
 
+def _headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+    }
+
+
 def _text(value: object, fallback: str = "") -> str:
     if value is None:
         return fallback
     return str(value)
 
 
-def _make_page(product: dict) -> dict:
-    properties: dict = {
-        "상품명": {
+def _get_data_source_schema(token: str, data_source_id: str) -> dict:
+    """Read the live Notion Data Source schema before creating pages."""
+    response = requests.get(
+        f"{NOTION_API_BASE}/data_sources/{data_source_id}",
+        headers=_headers(token),
+        timeout=20,
+    )
+
+    if not response.ok:
+        raise RuntimeError(
+            f"Notion Data Source schema request failed "
+            f"({response.status_code}): {response.text}"
+        )
+
+    data = response.json()
+    properties = data.get("properties", {})
+    if not isinstance(properties, dict):
+        raise RuntimeError("Notion Data Source returned an invalid properties schema")
+
+    return properties
+
+
+def _find_property(schema: dict, name: str, expected_type: str) -> str:
+    """Resolve a property by its live schema name and verify its type."""
+    prop = schema.get(name)
+    if not prop:
+        available = ", ".join(schema.keys())
+        raise RuntimeError(
+            f'Notion property "{name}" was not found. Available properties: {available}'
+        )
+
+    actual_type = prop.get("type")
+    if actual_type != expected_type:
+        raise RuntimeError(
+            f'Notion property "{name}" has type "{actual_type}", '
+            f'but "{expected_type}" is required.'
+        )
+
+    # Property IDs are accepted by the Notion API and avoid ambiguity if a
+    # property name is renamed later. Fall back to the name if an ID is absent.
+    return prop.get("id") or name
+
+
+def _make_page(product: dict, schema: dict, data_source_id: str) -> dict:
+    title_key = _find_property(schema, "상품명", "title")
+    product_id_key = _find_property(schema, "상품 ID", "rich_text")
+    price_key = _find_property(schema, "가격", "rich_text")
+    product_url_key = _find_property(schema, "상품 URL", "url")
+    image_url_key = _find_property(schema, "이미지 URL", "url")
+    keyword_key = _find_property(schema, "키워드", "rich_text")
+    discovered_key = _find_property(schema, "발견일", "date")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    properties = {
+        title_key: {
             "title": [
                 {
                     "text": {
@@ -41,7 +102,7 @@ def _make_page(product: dict) -> dict:
                 }
             ]
         },
-        "상품 ID": {
+        product_id_key: {
             "rich_text": [
                 {
                     "text": {
@@ -50,7 +111,7 @@ def _make_page(product: dict) -> dict:
                 }
             ]
         },
-        "가격": {
+        price_key: {
             "rich_text": [
                 {
                     "text": {
@@ -59,13 +120,13 @@ def _make_page(product: dict) -> dict:
                 }
             ]
         },
-        "상품 URL": {
+        product_url_key: {
             "url": product.get("url") or None
         },
-        "이미지 URL": {
+        image_url_key: {
             "url": product.get("image") or None
         },
-        "키워드": {
+        keyword_key: {
             "rich_text": [
                 {
                     "text": {
@@ -74,30 +135,28 @@ def _make_page(product: dict) -> dict:
                 }
             ]
         },
-        "date:발견일:start": datetime.now(timezone.utc).isoformat(),
-        "date:발견일:is_datetime": 1,
+        discovered_key: {
+            "date": {
+                "start": now,
+                "end": None,
+            }
+        },
     }
 
     return {
         "parent": {
             "type": "data_source_id",
-            "data_source_id": os.environ["NOTION_DATA_SOURCE_ID"],
+            "data_source_id": data_source_id,
         },
         "properties": properties,
     }
 
 
 def _post_page(token: str, payload: dict) -> None:
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Notion-Version": NOTION_VERSION,
-        "Content-Type": "application/json",
-    }
-
     for attempt in range(1, MAX_RETRIES + 1):
         response = requests.post(
-            NOTION_API_URL,
-            headers=headers,
+            f"{NOTION_API_BASE}/pages",
+            headers=_headers(token),
             json=payload,
             timeout=20,
         )
@@ -129,11 +188,21 @@ def send_notion_notifications(products: list[dict]) -> None:
     if not products:
         return
 
-    token, _ = _get_config()
+    token, data_source_id = _get_config()
+
+    # Do not assume the Notion schema. Read the live schema on every run so
+    # configuration errors are reported before any product page is created.
+    schema = _get_data_source_schema(token, data_source_id)
+    print(
+        "[Notion] Schema verified: "
+        + ", ".join(f"{name}={prop.get('type')}" for name, prop in schema.items())
+    )
+
     print(f"[Notion] Saving {len(products)} products")
 
     for index, product in enumerate(products, start=1):
-        _post_page(token, _make_page(product))
+        payload = _make_page(product, schema, data_source_id)
+        _post_page(token, payload)
         print(
             f"[Notion] Product {index}/{len(products)} saved: "
             f"{product.get('name', 'unknown')}"
