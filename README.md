@@ -1,6 +1,6 @@
 # HeroTime Product Monitor
 
-HeroTime 검색 결과에서 `config.json`에 등록한 여러 키워드의 상품을 Playwright로 수집하고, 처음 발견한 상품을 Discord Webhook과 Notion으로 알립니다.
+HeroTime(https://herotime.co.kr/index.html) 검색 결과에서 `config.json`에 등록한 여러 키워드의 상품을 Playwright로 수집하고, 처음 발견한 상품을 Discord Webhook과 Notion으로 알립니다.
 
 ## 대상 페이지
 
@@ -53,8 +53,4 @@ GitHub Repository의 Settings → Secrets and variables → Actions에서 다음
 
 값에는 Discord 채널의 Webhook URL을 입력합니다.
 
-## 수동 테스트
-
-GitHub → Actions → `HeroTime Miku Monitor` → `Run workflow`를 실행합니다.
-
-> GitHub Actions의 scheduled workflow는 정확히 5분마다 실행된다고 보장되지 않습니다. GitHub의 실행 지연이 발생할 수 있습니다.
+매일 오전 9시 (GMT+9) 기준으로 Discord로 전송
