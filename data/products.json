@@ -479,14 +479,6 @@
     "image": "https://herotime.co.kr/web/product/medium/202604/e38bb57aed4712d1faf00fd452f73bdf.png",
     "keyword": "미쿠"
   },
-  "71630": {
-    "id": "71630",
-    "name": "(입고완료)세가 Luminasta 하츠네 미쿠 시리즈 하츠네 미쿠 컨셉추얼 시리즈 Vol.1 Tropical Ver.",
-    "price": "27,000원",
-    "url": "https://herotime.co.kr/product/입고완료세가-luminasta-하츠네-미쿠-시리즈-하츠네-미쿠-컨셉추얼-시리즈-vol1-tropical-ver/71630/category/63/display/1/",
-    "image": "https://herotime.co.kr/web/product/medium/202603/bec02d8a5573834bb1329a3cd5d84f33.png",
-    "keyword": "미쿠"
-  },
   "77290": {
     "id": "77290",
     "name": "타이토 AMP+ 캐릭터보컬시리즈01 하츠네미쿠 스노우미쿠 2016 올스타즈 버전",
@@ -637,6 +629,14 @@
     "price": "297,000원",
     "url": "https://herotime.co.kr/product/굿스마일컴퍼니-gs컬렉션-하츠네미쿠-로즈-케이지-버전-17-완성품-피규어재판/78067/category/51/display/1/",
     "image": "https://cafe24img.poxo.com/sinkkh/web/product/medium/202611/9093b7ff9a830bb97e6fa946fd52073e.jpg",
+    "keyword": "미쿠"
+  },
+  "78125": {
+    "id": "78125",
+    "name": "타이토 AMP+ 보컬로이드 하츠네미쿠 유키미쿠올스타즈 2017 ver",
+    "price": "27,000원",
+    "url": "https://herotime.co.kr/product/타이토-amp-보컬로이드-하츠네미쿠-유키미쿠올스타즈-2017-ver/78125/category/51/display/1/",
+    "image": "https://herotime.co.kr/web/product/medium/202611/eee60ce97a9a65072fb99991e9fa3340.jpg",
     "keyword": "미쿠"
   }
 }
